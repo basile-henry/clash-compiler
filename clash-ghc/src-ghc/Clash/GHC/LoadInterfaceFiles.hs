@@ -16,10 +16,14 @@ module Clash.GHC.LoadInterfaceFiles
 where
 
 -- External Modules
-import           Data.Either (partitionEithers)
-import           Data.List   (elemIndex, foldl', partition)
-import           Data.Maybe  (isJust, isNothing, mapMaybe)
-import           Data.Word   (Word8)
+import           Control.Monad.IO.Class      (MonadIO (..))
+import           Data.Char                   (toLower)
+import           Data.Either                 (partitionEithers)
+import           Data.List                   (elemIndex, foldl', partition)
+import           Data.Maybe                  (isJust, isNothing, mapMaybe)
+import           Data.Word                   (Word8)
+import           System.Directory            (createDirectoryIfMissing)
+import           System.FilePath.Posix       ((<.>), (</>))
 
 import           Clash.Annotations.Primitive
 
@@ -30,7 +34,7 @@ import qualified Class
 import qualified CoreFVs
 import qualified CoreSyn
 import qualified Demand
-import           DynFlags    (unsafeGlobalDynFlags)
+import           DynFlags                    (unsafeGlobalDynFlags)
 import qualified GHC
 import qualified Id
 import qualified IdInfo
@@ -43,8 +47,12 @@ import qualified Module
 #endif
 import qualified MonadUtils
 import qualified Name
-import           Outputable  (showPpr, showSDoc, text)
+import           Outputable                  (showPpr, showSDoc, text)
+#if MIN_VERSION_ghc(8,4,1)
+import qualified GhcPlugins
+#else
 import qualified Serialized
+#endif
 import qualified TcIface
 import qualified TcRnMonad
 import qualified TcRnTypes
@@ -56,7 +64,7 @@ import qualified VarSet
 #endif
 
 -- Internal Modules
-import           Clash.Util  ((***), curLoc, traceIf)
+import           Clash.Util                  (curLoc, traceIf, (***))
 
 runIfl :: GHC.GhcMonad m => GHC.Module -> TcRnTypes.IfL a -> m a
 runIfl modName action = do
@@ -179,7 +187,7 @@ loadExprFromIface hdl bndr = do
           let declM = filter ((== nameFun) . IfaceSyn.ifName) decls
 #endif
           anns <- TcIface.tcIfaceAnnotations (GHC.mi_anns iface)
-          let primFPs = loadPrimitiveAnnotations hdl anns
+          primFPs <- loadPrimitiveAnnotations hdl anns
           case declM of
             [namedDecl] -> do
               tyThing <- loadDecl namedDecl
@@ -187,18 +195,36 @@ loadExprFromIface hdl bndr = do
             _ -> return (Right bndr,primFPs)
     Nothing -> return (Right bndr,[])
 
-loadPrimitiveAnnotations
-  :: HDL
+loadPrimitiveAnnotations ::
+  MonadIO m
+  => HDL
   -> [Annotations.Annotation]
-  -> [FilePath]
-loadPrimitiveAnnotations hdl anns = mapMaybe toFP (concat prims)
+  -> m [FilePath]
+loadPrimitiveAnnotations hdl anns = sequence $ mapMaybe toFP prims
   where
-    annEnv       = Annotations.mkAnnEnv anns
-    prims        = UniqFM.eltsUFM (Annotations.deserializeAnns deserializer annEnv)
+    prims = mapMaybe filterPrim anns
+    filterPrim (Annotations.Annotation target value) =
+      let qualifiedName =
+            case target of
+              Annotations.NamedTarget name -> Name.nameStableString name
+              Annotations.ModuleTarget mod -> Module.moduleStableString mod
+      in (qualifiedName,) <$> Serialized.fromSerialized deserializer value
+#if MIN_VERSION_ghc(8,4,1)
+    deserializer = GhcPlugins.deserializeWithData :: ([Word8] -> Primitive)
+#else
     deserializer = Serialized.deserializeWithData :: ([Word8] -> Primitive)
-    toFP (Primitive hdl' fp)
+#endif
+    toFP (_, Primitive hdl' fp)
       | hdl == hdl'
-      = Just fp
+      = Just $ pure fp
+    toFP (name, InlinePrimitive hdl' content)
+      | hdl == hdl'
+      = Just . liftIO $ do
+          let inlinePrimsDir = "inline_primitives" </> map toLower (show hdl)
+              primFile = inlinePrimsDir </> name <.> "json"
+          createDirectoryIfMissing True inlinePrimsDir
+          writeFile primFile content
+          return inlinePrimsDir
     toFP _ = Nothing
 
 loadExprFromTyThing :: CoreSyn.CoreBndr

@@ -49,6 +49,9 @@ import qualified HscMain
 import qualified HscTypes
 import qualified MonadUtils
 import qualified Panic
+#if MIN_VERSION_ghc(8,4,1)
+import qualified GhcPlugins
+#else
 import qualified Serialized
 import qualified TidyPgm
 import qualified TcRnMonad
