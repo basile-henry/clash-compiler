@@ -27,10 +27,10 @@ where
 import           Control.Arrow                (second)
 import           Data.Generics.Uniplate.DataOnly (transform)
 import           Data.List                    (foldl', lookup, nub)
-import           Data.Maybe                   (listToMaybe)
+import           Data.Maybe                   (fromMaybe, listToMaybe, mapMaybe, catMaybes)
 import           Data.Word                    (Word8)
-import           Clash.Annotations.Primitive  (HDL)
-import           Clash.Annotations.TopEntity  (TopEntity, TestBench (..))
+import           Clash.Annotations.Primitive  (HDL, Primitive (..))
+import           Clash.Annotations.TopEntity  (TopEntity (..))
 import           System.Exit                  (ExitCode (..))
 import           System.IO                    (hGetLine)
 import           System.IO.Error              (tryIOError)
@@ -223,6 +223,9 @@ loadModules hdl modName dflagsM = do
     (externalBndrs,clsOps,unlocatable,pFP) <-
       loadExternalExprs hdl (UniqSet.mkUniqSet binderIds) bindersC
 
+    -- Find local primitive annotations
+    pFP' <- findPrimitiveAnnotations hdl binderIds
+
     hscEnv <- GHC.getSession
     famInstEnvs <- TcRnMonad.liftIO $ TcRnMonad.initTcForLookup hscEnv FamInst.tcGetFamInstEnvs
 
@@ -254,7 +257,7 @@ loadModules hdl modName dflagsM = do
         Just _  -> return allAnn'
       _ -> Panic.pgmError $ $(curLoc) ++ "Multiple 'topEntities' found."
 
-    return (bindersC ++ makeRecursiveGroups externalBndrs,clsOps,unlocatable,(fst famInstEnvs,modFamInstEnvs'),topEntities',nub pFP)
+    return (bindersC ++ makeRecursiveGroups externalBndrs,clsOps,unlocatable,(fst famInstEnvs,modFamInstEnvs'),topEntities',nub $ pFP ++ pFP')
 
 -- | Given a set of bindings, make explicit non-recursive bindings and
 -- recursive binding groups.
@@ -330,6 +333,34 @@ findTestBenchAnnotations bndrs = do
         bndrNm  = Var.varName bndr
         qualNm  = maybe occName (\modName -> modName ++ ('.':occName)) (modNameM bndrNm)
         occName = OccName.occNameString (Name.nameOccName bndrNm)
+
+findPrimitiveAnnotations
+  :: GHC.GhcMonad m
+  => HDL
+  -> [CoreSyn.CoreBndr]
+  -> m [FilePath]
+findPrimitiveAnnotations hdl bndrs = do
+  dflags <- GHC.getSessionDynFlags
+
+  let -- Using the stub directory as the output directory for inline primitives
+      outDir = fromMaybe "." $ GHC.stubDir dflags
+#if MIN_VERSION_ghc(8,4,1)
+      deserializer = GhcPlugins.deserializeWithData :: ([Word8] -> Primitive)
+#else
+      deserializer = Serialized.deserializeWithData :: ([Word8] -> Primitive)
+#endif
+      targets =
+        concatMap
+          ( (\v -> catMaybes
+            [ Just $ Annotations.NamedTarget v
+            , Annotations.ModuleTarget <$> Name.nameModule_maybe v
+            ]) . Var.varName
+          ) bndrs
+
+  anns <- mapM (GHC.findGlobalAnns deserializer) targets
+  sequence $
+    mapMaybe (primitiveFilePath hdl outDir)
+    (concat $ zipWith (\t -> map ((,) t)) targets anns)
 
 parseModule :: GHC.GhcMonad m => GHC.ModSummary -> m GHC.ParsedModule
 parseModule modSum = do
