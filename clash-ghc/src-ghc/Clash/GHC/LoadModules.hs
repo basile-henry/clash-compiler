@@ -25,7 +25,8 @@ where
 
 -- External Modules
 import           Clash.Annotations.Primitive     (HDL, Primitive (..))
-import           Clash.Annotations.TopEntity     (TopEntity (..))
+import           Clash.Annotations.TopEntity     (TestBench (..),
+                                                  TopEntity (..))
 import           Control.Arrow                   (second)
 import           Data.Generics.Uniplate.DataOnly (transform)
 import           Data.List                       (foldl', lookup, nub)
