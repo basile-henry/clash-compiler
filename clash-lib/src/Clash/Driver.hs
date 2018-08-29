@@ -358,7 +358,7 @@ compilePrimitive (BlackBox pNm tkind oReg libM imps incs templ) = do
         qualMod = intercalate "." modNames
     r <- Hint.runInterpreter $ do
       Hint.unsafeSetGhcOption "-v"
-      Hint.setImports [ "Clash.Netlist.Types" , qualMod ]
+      Hint.setImports [ qualMod ]
       Hint.unsafeInterpret funcName "TemplateFunction"
     processHintError (show bbGenName) pNm BBFunction r
 
