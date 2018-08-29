@@ -15,69 +15,80 @@
 
 module Clash.Driver where
 
-import qualified Control.Concurrent.Supply        as Supply
+import qualified Control.Concurrent.Supply                    as Supply
 import           Control.DeepSeq
-import           Control.Exception                (tryJust, bracket)
-import           Control.Lens                     (view, (^.), _3, _5)
-import           Control.Monad                    (guard, when, unless, join, foldM)
-import           Control.Monad.State              (evalState, get)
-import           Data.Hashable                    (hash)
-import qualified Data.HashMap.Lazy                as HML
-import           Data.HashMap.Strict              (HashMap)
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.HashSet                     as HashSet
-import           Data.IntMap                      (IntMap)
-import           Data.List                        (intercalate)
-import           Data.Maybe                       (fromMaybe)
+import           Control.Exception                            (bracket, tryJust)
+import           Control.Lens                                 (view, (^.), _3,
+                                                               _5)
+import           Control.Monad                                (foldM, guard,
+                                                               join, unless,
+                                                               when)
+import           Control.Monad.State                          (evalState, get)
+import           Data.Hashable                                (hash)
+import qualified Data.HashMap.Lazy                            as HML
+import           Data.HashMap.Strict                          (HashMap)
+import qualified Data.HashMap.Strict                          as HM
+import qualified Data.HashSet                                 as HashSet
+import           Data.IntMap                                  (IntMap)
+import           Data.List                                    (intercalate)
+import           Data.Maybe                                   (fromMaybe)
 import           Data.Semigroup.Monad
 import qualified Data.Text
-import           Data.Text.Lazy                   (Text)
-import qualified Data.Text.Lazy                   as Text
-import qualified Data.Text.Lazy.IO                as Text
-import           Data.Text.Prettyprint.Doc        (pretty)
-import           Data.Text.Prettyprint.Doc.Extra
-  (Doc, LayoutOptions (..), PageWidth (..) , layoutPretty, renderLazy,
-   renderOneLine)
-import qualified Data.Time.Clock                  as Clock
-import qualified Language.Haskell.Interpreter     as Hint
-import qualified Language.Haskell.Interpreter.Unsafe as Hint
-import qualified System.Directory                 as Directory
-import           System.FilePath                  ((</>), (<.>))
-import qualified System.FilePath                  as FilePath
-import qualified System.IO                        as IO
-import           System.IO.Error                  (isDoesNotExistError)
-import           System.IO.Temp
-  (getCanonicalTemporaryDirectory, withTempDirectory)
-import qualified Text.PrettyPrint.ANSI.Leijen     as ANSI
-import           Text.Trifecta.Result
-  (Result(Success, Failure), _errDoc)
-import           Text.Read                        (readMaybe)
-import           GHC.BasicTypes.Extra             ()
+import           Data.Text.Lazy                               (Text)
+import qualified Data.Text.Lazy                               as Text
+import qualified Data.Text.Lazy.IO                            as Text
+import           Data.Text.Prettyprint.Doc                    (pretty)
+import           Data.Text.Prettyprint.Doc.Extra              (Doc, LayoutOptions (..),
+                                                               PageWidth (..),
+                                                               layoutPretty,
+                                                               renderLazy,
+                                                               renderOneLine)
+import qualified Data.Time.Clock                              as Clock
+import           GHC.BasicTypes.Extra                         ()
+import qualified Language.Haskell.Interpreter                 as Hint
+import qualified Language.Haskell.Interpreter.Unsafe          as Hint
+import qualified System.Directory                             as Directory
+import           System.FilePath                              ((<.>), (</>))
+import qualified System.FilePath                              as FilePath
+import qualified System.IO                                    as IO
+import           System.IO.Error                              (isDoesNotExistError)
+import           System.IO.Temp                               (getCanonicalTemporaryDirectory,
+                                                               withTempDirectory)
+import qualified Text.PrettyPrint.ANSI.Leijen                 as ANSI
+import           Text.Read                                    (readMaybe)
+import           Text.Trifecta.Result                         (Result (Failure, Success),
+                                                               _errDoc)
 
-import           Clash.Annotations.Primitive      (HDL (..))
-import           Clash.Annotations.BitRepresentation.Internal
-  (CustomReprs)
-import           Clash.Annotations.TopEntity      (TopEntity (..))
-import           Clash.Annotations.TopEntity.Extra ()
+import           Clash.Annotations.BitRepresentation.Internal (CustomReprs)
+import           Clash.Annotations.Primitive                  (HDL (..))
+import           Clash.Annotations.TopEntity                  (TopEntity (..))
+import           Clash.Annotations.TopEntity.Extra            ()
 import           Clash.Backend
-import           Clash.Core.Evaluator             (PrimEvaluator)
-import           Clash.Core.Name                  (Name (..), name2String)
-import           Clash.Core.Term                  (Term, TmName, TmOccName)
-import           Clash.Core.Type                  (Type)
-import           Clash.Core.TyCon                 (TyCon, TyConName, TyConOccName)
+import           Clash.Core.Evaluator                         (PrimEvaluator)
+import           Clash.Core.Name                              (Name (..),
+                                                               name2String)
+import           Clash.Core.Term                              (Term, TmName,
+                                                               TmOccName)
+import           Clash.Core.TyCon                             (TyCon, TyConName,
+                                                               TyConOccName)
+import           Clash.Core.Type                              (Type)
 import           Clash.Driver.Types
-import           Clash.Netlist                    (genNetlist)
-import           Clash.Netlist.Util               (genComponentName, genTopComponentName)
-import           Clash.Netlist.BlackBox.Parser    (runParse)
-import           Clash.Netlist.BlackBox.Types     (BlackBoxTemplate, BlackBoxFunction)
-import           Clash.Netlist.Types
-  (BlackBox (..), Component (..), HWType, Identifier)
-import           Clash.Normalize                  (checkNonRecursive, cleanupGraph,
-                                                   normalize, runNormalization)
-import           Clash.Normalize.Util             (callGraph)
+import           Clash.Netlist                                (genNetlist)
+import           Clash.Netlist.BlackBox.Parser                (runParse)
+import           Clash.Netlist.BlackBox.Types                 (BlackBoxFunction,
+                                                               BlackBoxTemplate)
+import           Clash.Netlist.Types                          (BlackBox (..),
+                                                               Component (..),
+                                                               HWType,
+                                                               Identifier)
+import           Clash.Netlist.Util                           (genComponentName, genTopComponentName)
+import           Clash.Normalize                              (checkNonRecursive,
+                                                               cleanupGraph,
+                                                               normalize,
+                                                               runNormalization)
+import           Clash.Normalize.Util                         (callGraph)
 import           Clash.Primitives.Types
-import           Clash.Util                       (first)
-
+import           Clash.Util                                   (first)
 
 -- | Create a set of target HDL files for a set of functions
 generateHDL
@@ -335,6 +346,7 @@ compilePrimitive (BlackBox pNm tkind oReg libM imps incs templ) = do
       Directory.createDirectoryIfMissing True modDir
       Text.writeFile (modDir </> last modNames <.>  "hs") source
       Hint.runInterpreter $ do
+        Hint.unsafeSetGhcOption "-v"
         iPaths <- (tmpDir':) <$> Hint.get Hint.searchPath
         Hint.set [Hint.searchPath Hint.:= iPaths]
         Hint.loadModules [qualMod]
@@ -345,6 +357,7 @@ compilePrimitive (BlackBox pNm tkind oReg libM imps incs templ) = do
     let BlackBoxFunctionName modNames funcName = bbGenName
         qualMod = intercalate "." modNames
     r <- Hint.runInterpreter $ do
+      Hint.unsafeSetGhcOption "-v"
       Hint.setImports [ "Clash.Netlist.Types" , qualMod ]
       Hint.unsafeInterpret funcName "TemplateFunction"
     processHintError (show bbGenName) pNm BBFunction r
