@@ -137,15 +137,15 @@ instance (KnownNat n, 1 <= n) => BitPack (Index n) where
   unpack = unpack#
 
 -- | Safely convert an `SNat` value to an `Index`
-fromSNat :: (KnownNat m, CmpNat n m ~ 'LT) => SNat n -> Index m
+fromSNat :: (KnownNat m, CmpNat n m ~ 'LT, HasCallStack) => SNat n -> Index m
 fromSNat = snatToNum
 
 {-# NOINLINE pack# #-}
-pack# :: Index n -> BitVector (CLog 2 n)
+pack# :: HasCallStack => Index n -> BitVector (CLog 2 n)
 pack# (I i) = BV 0 i
 
 {-# NOINLINE unpack# #-}
-unpack# :: (KnownNat n, 1 <= n) => BitVector (CLog 2 n) -> Index n
+unpack# :: (KnownNat n, 1 <= n, HasCallStack) => BitVector (CLog 2 n) -> Index n
 unpack# (BV 0 i) = fromInteger_INLINE i
 unpack# bv = undefError "Index.unpack" [bv]
 
@@ -193,10 +193,10 @@ instance KnownNat n => Enum (Index n) where
 {-# NOINLINE enumFromThen# #-}
 {-# NOINLINE enumFromTo# #-}
 {-# NOINLINE enumFromThenTo# #-}
-enumFrom#       :: KnownNat n => Index n -> [Index n]
-enumFromThen#   :: KnownNat n => Index n -> Index n -> [Index n]
-enumFromTo#     :: Index n -> Index n -> [Index n]
-enumFromThenTo# :: Index n -> Index n -> Index n -> [Index n]
+enumFrom#       :: (KnownNat n, HasCallStack) => Index n -> [Index n]
+enumFromThen#   :: (KnownNat n, HasCallStack) => Index n -> Index n -> [Index n]
+enumFromTo#     :: HasCallStack => Index n -> Index n -> [Index n]
+enumFromThenTo# :: HasCallStack => Index n -> Index n -> Index n -> [Index n]
 enumFrom# x             = map fromInteger_INLINE [unsafeToInteger x ..]
 enumFromThen# x y       = map fromInteger_INLINE [unsafeToInteger x, unsafeToInteger y ..]
 enumFromTo# x y         = map I [unsafeToInteger x .. unsafeToInteger y]
@@ -207,7 +207,7 @@ instance KnownNat n => Bounded (Index n) where
   maxBound = maxBound#
 
 {-# NOINLINE maxBound# #-}
-maxBound# :: KnownNat n => Index n
+maxBound# :: (KnownNat n, HasCallStack) => Index n
 maxBound# = let res = fromInteger_INLINE (natVal res - 1) in res
 
 -- | Operators report an error on overflow and underflow
@@ -220,7 +220,7 @@ instance KnownNat n => Num (Index n) where
   signum i    = if i == 0 then 0 else 1
   fromInteger = fromInteger#
 
-(+#),(-#),(*#) :: KnownNat n => Index n -> Index n -> Index n
+(+#),(-#),(*#) :: (KnownNat n, HasCallStack) => Index n -> Index n -> Index n
 {-# NOINLINE (+#) #-}
 (+#) (I a) (I b) = fromInteger_INLINE $ a + b
 
@@ -230,7 +230,7 @@ instance KnownNat n => Num (Index n) where
 {-# NOINLINE (*#) #-}
 (*#) (I a) (I b) = fromInteger_INLINE $ a * b
 
-fromInteger# :: KnownNat n => Integer -> Index n
+fromInteger# :: (KnownNat n, HasCallStack) => Integer -> Index n
 {-# NOINLINE fromInteger# #-}
 fromInteger# = fromInteger_INLINE
 {-# INLINE fromInteger_INLINE #-}
