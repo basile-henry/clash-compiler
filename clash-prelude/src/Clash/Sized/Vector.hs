@@ -126,6 +126,7 @@ import Prelude                    hiding ((++), (!!), concat, concatMap, drop,
 import qualified Prelude          as P
 import Test.QuickCheck            (Arbitrary (..), CoArbitrary (..))
 import Unsafe.Coerce              (unsafeCoerce)
+import GHC.Stack (HasCallStack)
 
 import Clash.Promoted.Nat
   (SNat (..), UNat (..), leToPlus, pow2SNat, snatProxy, snatToInteger, subSNat,
@@ -617,7 +618,7 @@ map f (x `Cons` xs) = f x `Cons` map f xs
 -- \"'imap' @f xs@\" corresponds to the following circuit layout:
 --
 -- <<doc/imap.svg>>
-imap :: forall n a b . KnownNat n => (Index n -> a -> b) -> Vec n a -> Vec n b
+imap :: forall n a b . (KnownNat n, HasCallStack) => (Index n -> a -> b) -> Vec n a -> Vec n b
 imap f = go 0
   where
     go :: Index n -> Vec m a -> Vec m b

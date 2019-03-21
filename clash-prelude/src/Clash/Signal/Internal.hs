@@ -176,7 +176,7 @@ instance Functor (Signal domain) where
   fmap = mapSignal#
 
 {-# NOINLINE mapSignal# #-}
-mapSignal# :: (a -> b) -> Signal domain a -> Signal domain b
+mapSignal# :: HasCallStack => (a -> b) -> Signal domain a -> Signal domain b
 mapSignal# f (a :- as) = f a :- mapSignal# f as
 
 instance Applicative (Signal domain) where
