@@ -177,7 +177,7 @@ instance Functor (Signal domain) where
 
 {-# NOINLINE mapSignal# #-}
 mapSignal# :: (a -> b) -> Signal domain a -> Signal domain b
-mapSignal# f (a :- as) = f a :- mapSignal# f as
+mapSignal# f = go where go (a :- as) = let b = f a in b :- (b `seqX` go as)
 
 instance Applicative (Signal domain) where
   pure  = signal#
