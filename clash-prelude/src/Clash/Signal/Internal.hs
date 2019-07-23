@@ -189,7 +189,9 @@ signal# a = let s = a :- s in s
 
 {-# NOINLINE appSignal# #-}
 appSignal# :: Signal domain (a -> b) -> Signal domain a -> Signal domain b
-appSignal# (f :- fs) xs@(~(a :- as)) = f a :- (xs `seq` appSignal# fs as) -- See [NOTE: Lazy ap]
+appSignal# (f :- fs) xs@(~(a :- as)) =
+  let b = f a
+  in  b :- (b `seqX` xs `seq` appSignal# fs as) -- See [NOTE: Lazy ap]
 
 {- NOTE: Lazy ap
 Signal's ap, i.e (Applicative.<*>), must be lazy in it's second argument:
